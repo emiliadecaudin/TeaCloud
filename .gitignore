@@ -1,0 +1,15 @@
+# Data
+
+data/
+
+# Environment
+
+.env
+
+# Poetry
+
+poetry.lock
+
+# Python
+
+__pycache__/
