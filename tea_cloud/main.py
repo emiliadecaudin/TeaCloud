@@ -1,3 +1,6 @@
+# --- Imports ------------------------------------------------------------------------ #
+
+import re
 from datetime import datetime, timedelta
 from logging import getLogger
 from os import getenv
@@ -7,30 +10,142 @@ import discord.client
 import discord.file
 import discord.flags
 import numpy
+from discord.ext import commands
 from dotenv import load_dotenv
 from PIL import Image
-from wordcloud import ImageColorGenerator, WordCloud, STOPWORDS
+from wordcloud import STOPWORDS, ImageColorGenerator, WordCloud
 
-logger = getLogger("discord")
+# --- Constants ---------------------------------------------------------------------- #
+
+# Load environment variables.
 load_dotenv()
+
+# Main flow.
+LOGGER: Final = getLogger("discord")
 BOT_TOKEN: Final = getenv("BOT_TOKEN", "")
-TWENTY_FOUR_HOURS_AGO: Final = datetime.today() - timedelta(days=1)
+URL_PATTERN: Final = re.compile(r"https?://\S+|www\.\S+")
 
-alphabet_stop_words = {chr(i) for i in range(ord('a'), ord('z') + 1)}
-top_100_common_words = {
-    "the", "be", "to", "of", "and", "a", "in", "that", "have", "I", "it", "for", "not", "on", "with", "he", "as", "you", 
-    "do", "at", "this", "but", "his", "by", "from", "they", "we", "say", "her", "she", "or", "an", "will", "my", "one", 
-    "all", "would", "there", "their", "what", "so", "up", "out", "if", "about", "who", "get", "which", "go", "me", 
-    "when", "make", "can", "like", "time", "no", "just", "him", "know", "take", "people", "into", "year", "your", 
-    "good", "some", "could", "them", "see", "other", "than", "then", "now", "look", "only", "come", "its", "over", 
-    "think", "also", "back", "after", "use", "two", "how", "our", "work", "first", "well", "way", "even", "new", 
-    "want", "because", "any", "these", "give", "day", "most", "us"
-}
-custom_dougcord_common_words = {
-    "one", "people", "think", "lol", "thing", "will", "actually"
-}
 
-all_stop_words = STOPWORDS.union(alphabet_stop_words).union(top_100_common_words).union(custom_dougcord_common_words)
+# Stopwords.
+ALPHABET_STOPWORDS: Final = {chr(i) for i in range(ord("a"), ord("z") + 1)}
+TOP_100_COMMON_WORDS: Final = {
+    "the",
+    "be",
+    "to",
+    "of",
+    "and",
+    "a",
+    "in",
+    "that",
+    "have",
+    "I",
+    "it",
+    "for",
+    "not",
+    "on",
+    "with",
+    "he",
+    "as",
+    "you",
+    "do",
+    "at",
+    "this",
+    "but",
+    "his",
+    "by",
+    "from",
+    "they",
+    "we",
+    "say",
+    "her",
+    "she",
+    "or",
+    "an",
+    "will",
+    "my",
+    "one",
+    "all",
+    "would",
+    "there",
+    "their",
+    "what",
+    "so",
+    "up",
+    "out",
+    "if",
+    "about",
+    "who",
+    "get",
+    "which",
+    "go",
+    "me",
+    "when",
+    "make",
+    "can",
+    "like",
+    "time",
+    "no",
+    "just",
+    "him",
+    "know",
+    "take",
+    "people",
+    "into",
+    "year",
+    "your",
+    "good",
+    "some",
+    "could",
+    "them",
+    "see",
+    "other",
+    "than",
+    "then",
+    "now",
+    "look",
+    "only",
+    "come",
+    "its",
+    "over",
+    "think",
+    "also",
+    "back",
+    "after",
+    "use",
+    "two",
+    "how",
+    "our",
+    "work",
+    "first",
+    "well",
+    "way",
+    "even",
+    "new",
+    "want",
+    "because",
+    "any",
+    "these",
+    "give",
+    "day",
+    "most",
+    "us",
+}
+CUSTOM_DOUGCORD_COMMON_WORDS: Final = {
+    "one",
+    "people",
+    "think",
+    "lol",
+    "thing",
+    "will",
+    "actually",
+    "https",
+}
+ALL_STOPWORDS: Final = (
+    STOPWORDS | ALPHABET_STOPWORDS | TOP_100_COMMON_WORDS | CUSTOM_DOUGCORD_COMMON_WORDS
+)
+
+# --- Helpers ------------------------------------------------------------------------ #
+
 
 def get_text_channels(client: discord.client.Client) -> set[discord.TextChannel]:
     channels = set[discord.TextChannel]()
@@ -40,39 +155,53 @@ def get_text_channels(client: discord.client.Client) -> set[discord.TextChannel]
     return channels
 
 
+# --- Set-up Client ------------------------------------------------------------------ #
+
 intents = discord.flags.Intents.default()
 intents.message_content = True
 
-client = discord.client.Client(intents=intents)
+bot = commands.Bot("/", intents=intents)
+
+# --- Handlers ----------------------------------------------------------------------- #
 
 
-@client.event
-async def on_ready() -> None:
-    logger.info("Collecting messages...")
+@bot.command()
+async def wordcloud(ctx: commands.Context) -> None:
+    LOGGER.info("Collecting messages...")
 
-    channels = get_text_channels(client)
+    twenty_four_hours_ago: Final = datetime.today() - timedelta(days=1)
+    output_file = f"{twenty_four_hours_ago}.png"
+
+    channels = get_text_channels(bot)
 
     text = " ".join(
         [
             message.content
             for channel in channels
-            async for message in channel.history(after=TWENTY_FOUR_HOURS_AGO)
+            async for message in channel.history(after=twenty_four_hours_ago)
         ]
     )
+    text = URL_PATTERN.sub("", text)
 
-    logger.info("Generating word cloud...")
+    LOGGER.info("Generating word cloud...")
     doug_mask = numpy.array(Image.open("doug_mask.png"))
     WordCloud(
         background_color="white",
         mask=doug_mask,
         color_func=ImageColorGenerator(doug_mask),
-        stopwords=all_stop_words,
-    ).generate(text).to_file("output.png")
-    logger.info("Word cloud generated...")
+        stopwords=ALL_STOPWORDS,
+    ).generate(text).to_file(output_file)
+    LOGGER.info("Word cloud generated...")
 
     for channel in channels:
         if channel.name == "tech":
-            await channel.send(file=discord.file.File("./output.png"))
+            await channel.send(
+                f"Here's the Dougcord Tea Cloud since {twenty_four_hours_ago}.",
+                file=discord.file.File(output_file),
+            )
 
 
-client.run(BOT_TOKEN)
+# --- Main --------------------------------------------------------------------------- #
+
+if __name__ == "__main__":
+    bot.run(BOT_TOKEN)

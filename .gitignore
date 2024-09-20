@@ -1,6 +1,7 @@
 # Data
 
-data/
+*.png
+!doug_mask.png
 
 # Environment
 
