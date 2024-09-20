@@ -27,7 +27,7 @@ top_100_common_words = {
     "want", "because", "any", "these", "give", "day", "most", "us"
 }
 custom_dougcord_common_words = {
-    "one", "people", "think", "lol", "thing", "will", "actually", "one"
+    "one", "people", "think", "lol", "thing", "will", "actually"
 }
 
 all_stop_words = STOPWORDS.union(alphabet_stop_words).union(top_100_common_words).union(custom_dougcord_common_words)
