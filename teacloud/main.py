@@ -190,7 +190,7 @@ async def collect_messages(
     )
 
 
-def generate_word_cloud(text: str, server_id: int) -> Path:
+def generate_word_cloud(text: str, server_id: int) -> File:
     mask_file = (CUSTOM_MASKS_DIR / f"{server_id}.png").resolve()
     mask = numpy.array(Image.open(mask_file.as_posix())) if mask_file.exists() else None
     output_file = (
@@ -203,7 +203,7 @@ def generate_word_cloud(text: str, server_id: int) -> Path:
         stopwords=ALL_STOPWORDS,
     ).generate(text).to_file(output_file.as_posix())
 
-    return output_file
+    return File(output_file.as_posix())
 
 
 # --- Initialize Bot ----------------------------------------------------------------- #
@@ -224,7 +224,6 @@ async def on_ready() -> None:
 
 
 @bot.tree.command(
-    name="teacloud",
     description=(
         "Generates a word cloud of the last day of messages in this channel, or "
         f"the server if in #{SERVER_WIDE_CHANNEL}."
@@ -243,18 +242,19 @@ async def teacloud(interaction: Interaction) -> None:
 
     LOGGER.info(f"{log_prefix} Generating word cloud...")
     await interaction.response.defer(thinking=True)
-
-    text = await collect_messages(server_wide, channel, after=twenty_four_hours_ago)
-    output_file = generate_word_cloud(text, server.id)
+    word_cloud_file = generate_word_cloud(
+        await collect_messages(server_wide, channel, after=twenty_four_hours_ago),
+        server.id,
+    )
 
     LOGGER.info(f"{log_prefix} Word cloud generated...")
     await interaction.followup.send(
         (
             f"Here's the {server.name} word cloud for "
             f"{"the whole server" if server_wide else "this channel"} "
-            f"since {twenty_four_hours_ago}."
+            f"since yesterday, {twenty_four_hours_ago.strftime("%-I:%-M %p")}."
         ),
-        file=File(output_file.as_posix()),
+        file=word_cloud_file,
     )
 
 
