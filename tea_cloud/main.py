@@ -135,7 +135,8 @@ TOP_100_COMMON_WORDS: Final = {
     "most",
     "us",
 }
-CUSTOM_STOPWORDS: Final = {
+CUSTOM_EXCLUSIONS: Final = {
+    "wordcloud",
     "one",
     "people",
     "think",
@@ -153,7 +154,7 @@ CUSTOM_STOPWORDS: Final = {
     "really",
 }
 ALL_STOPWORDS: Final = (
-    STOPWORDS | ALPHABET_STOPWORDS | TOP_100_COMMON_WORDS | CUSTOM_STOPWORDS
+    STOPWORDS | ALPHABET_STOPWORDS | TOP_100_COMMON_WORDS | CUSTOM_EXCLUSIONS
 )
 
 # --- Helpers ------------------------------------------------------------------------ #
@@ -179,10 +180,13 @@ bot = Bot("/", intents=intents)
 
 @bot.command()
 async def wordcloud(ctx: Context) -> None:
-    if not isinstance(ctx.channel, TextChannel) or ctx.guild is None:
+    channel = ctx.channel
+    server = ctx.guild
+    if not isinstance(channel, TextChannel) or server is None:
         return
-    in_general = ctx.channel.name == "general"
-    log_prefix = f"[{ctx.guild.name}.{"*" if in_general else ctx.channel.name}]"
+
+    in_general = channel.name == "general"
+    log_prefix = f"[{server.name}.{"*" if in_general else channel.name}]"
 
     LOGGER.info(f"{log_prefix} Collecting messages...")
     twenty_four_hours_ago: Final = datetime.today() - timedelta(days=1)
@@ -191,18 +195,16 @@ async def wordcloud(ctx: Context) -> None:
         " ".join(
             [
                 message.content
-                for channel in (
-                    get_all_text_channels(bot) if in_general else [ctx.channel]
-                )
+                for channel in (get_all_text_channels(bot) if in_general else [channel])
                 async for message in channel.history(after=twenty_four_hours_ago)
             ]
         ),
     )
 
     LOGGER.info(f"{log_prefix} Generating word cloud...")
-    mask_file = (CUSTOM_MASKS_DIR / f"{ctx.guild.id}.png").resolve()
+    mask_file = (CUSTOM_MASKS_DIR / f"{server.id}.png").resolve()
     mask = numpy.array(Image.open(mask_file.as_posix())) if mask_file.exists() else None
-    output_file = (OUTPUT_DIR / f"{ctx.guild.id}_{twenty_four_hours_ago}.png").resolve()
+    output_file = (OUTPUT_DIR / f"{server.id}_{twenty_four_hours_ago}.png").resolve()
     WordCloud(
         background_color="white",
         mask=mask,
@@ -212,7 +214,7 @@ async def wordcloud(ctx: Context) -> None:
     LOGGER.info(f"{log_prefix} Word cloud generated...")
 
     await ctx.channel.send(
-        f"Here's the {ctx.guild.name} Tea Cloud for {"the whole server" if in_general else "this channel"} since {twenty_four_hours_ago}.",
+        f"Here's the {server.name} Tea Cloud for {"the whole server" if in_general else "this channel"} since {twenty_four_hours_ago}.",
         file=File(output_file),
     )
 
