@@ -1,9 +1,12 @@
 [tool.poetry]
-name = "tea_cloud"
+name = "TeaCloud"
 version = "0.1.0"
 description = "A Discord bot to generate a word cloud of the past day's discussion."
 authors = ["Émilia Decaudin"]
 license = "Copyright (c) Émilia Decaudin"
+
+[tool.poetry.scripts]
+teacloud = "teacloud.main:start"
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -23,7 +26,7 @@ warn_redundant_casts = true
 warn_return_any = true
 warn_unused_ignores = true
 check_untyped_defs = true
-files = ["tea_cloud"]
+files = ["teacloud"]
 
 [[tool.mypy.overrides]]
 module = "wordcloud"

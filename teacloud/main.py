@@ -247,5 +247,10 @@ async def teacloud(interaction: Interaction) -> None:
 
 # --- Main --------------------------------------------------------------------------- #
 
-if __name__ == "__main__":
+
+def start() -> None:
     bot.run(BOT_TOKEN)
+
+
+if __name__ == "__main__":
+    start()
