@@ -4,11 +4,11 @@ import re
 from datetime import datetime, timedelta
 from logging import getLogger
 from os import getenv
-from typing import Final, TypeGuard
+from pathlib import Path
+from typing import Final
 
 import numpy
 from discord import TextChannel
-from discord.abc import GuildChannel
 from discord.client import Client
 from discord.ext.commands import Bot, Context
 from discord.file import File
@@ -27,6 +27,9 @@ LOGGER: Final = getLogger("discord")
 BOT_TOKEN: Final = getenv("BOT_TOKEN", "")
 URL_PATTERN: Final = re.compile(r"https?://\S+|www\.\S+")
 
+# Directories
+CUSTOM_MASKS_DIR: Final = Path(getenv("CUSTOM_MASKS_DIR", "./custom_masks")).resolve()
+OUTPUT_DIR: Final = Path(getenv("OUTPUT_DIR", "./output")).resolve()
 
 # Stopwords.
 ALPHABET_STOPWORDS: Final = {chr(i) for i in range(ord("a"), ord("z") + 1)}
@@ -132,7 +135,7 @@ TOP_100_COMMON_WORDS: Final = {
     "most",
     "us",
 }
-CUSTOM_DOUGCORD_COMMON_WORDS: Final = {
+CUSTOM_STOPWORDS: Final = {
     "one",
     "people",
     "think",
@@ -150,20 +153,16 @@ CUSTOM_DOUGCORD_COMMON_WORDS: Final = {
     "really",
 }
 ALL_STOPWORDS: Final = (
-    STOPWORDS | ALPHABET_STOPWORDS | TOP_100_COMMON_WORDS | CUSTOM_DOUGCORD_COMMON_WORDS
+    STOPWORDS | ALPHABET_STOPWORDS | TOP_100_COMMON_WORDS | CUSTOM_STOPWORDS
 )
 
 # --- Helpers ------------------------------------------------------------------------ #
 
 
-def is_text_channel(channel: GuildChannel) -> TypeGuard[TextChannel]:
-    return isinstance(channel, TextChannel)
-
-
-def get_text_channels(client: Client) -> set[TextChannel]:
+def get_all_text_channels(client: Client) -> set[TextChannel]:
     channels = set[TextChannel]()
     for channel in client.get_all_channels():
-        if is_text_channel(channel):
+        if isinstance(channel, TextChannel):
             channels.add(channel)
     return channels
 
@@ -180,38 +179,42 @@ bot = Bot("/", intents=intents)
 
 @bot.command()
 async def wordcloud(ctx: Context) -> None:
-    LOGGER.info("Collecting messages...")
+    if not isinstance(ctx.channel, TextChannel) or ctx.guild is None:
+        return
+    in_general = ctx.channel.name == "general"
+    log_prefix = f"[{ctx.guild.name}.{"*" if in_general else ctx.channel.name}]"
 
+    LOGGER.info(f"{log_prefix} Collecting messages...")
     twenty_four_hours_ago: Final = datetime.today() - timedelta(days=1)
-    output_file = f"{twenty_four_hours_ago}.png"
-
-    channels = get_text_channels(bot)
-
-    text = " ".join(
-        [
-            message.content
-            for channel in channels
-            async for message in channel.history(after=twenty_four_hours_ago)
-        ]
+    text = URL_PATTERN.sub(
+        "",
+        " ".join(
+            [
+                message.content
+                for channel in (
+                    get_all_text_channels(bot) if in_general else [ctx.channel]
+                )
+                async for message in channel.history(after=twenty_four_hours_ago)
+            ]
+        ),
     )
-    text = URL_PATTERN.sub("", text)
 
-    LOGGER.info("Generating word cloud...")
-    doug_mask = numpy.array(Image.open("doug_mask.png"))
+    LOGGER.info(f"{log_prefix} Generating word cloud...")
+    mask_file = (CUSTOM_MASKS_DIR / f"{ctx.guild.id}.png").resolve()
+    mask = numpy.array(Image.open(mask_file.as_posix())) if mask_file.exists() else None
+    output_file = (OUTPUT_DIR / f"{ctx.guild.id}_{twenty_four_hours_ago}.png").resolve()
     WordCloud(
         background_color="white",
-        mask=doug_mask,
-        color_func=ImageColorGenerator(doug_mask),
+        mask=mask,
+        color_func=ImageColorGenerator(mask) if mask_file.exists() else None,
         stopwords=ALL_STOPWORDS,
-    ).generate(text).to_file(output_file)
-    LOGGER.info("Word cloud generated...")
+    ).generate(text).to_file(output_file.as_posix())
+    LOGGER.info(f"{log_prefix} Word cloud generated...")
 
-    for channel in channels:
-        if channel.name == "tech":
-            await channel.send(
-                f"Here's the Dougcord Tea Cloud since {twenty_four_hours_ago}.",
-                file=File(output_file),
-            )
+    await ctx.channel.send(
+        f"Here's the {ctx.guild.name} Tea Cloud for {"the whole server" if in_general else "this channel"} since {twenty_four_hours_ago}.",
+        file=File(output_file),
+    )
 
 
 # --- Main --------------------------------------------------------------------------- #

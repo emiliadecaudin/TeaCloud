@@ -1,7 +1,7 @@
 # Data
 
-*.png
-!doug_mask.png
+custom_masks/
+output/
 
 # Environment
 
