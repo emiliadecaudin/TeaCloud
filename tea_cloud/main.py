@@ -4,13 +4,15 @@ import re
 from datetime import datetime, timedelta
 from logging import getLogger
 from os import getenv
-from typing import Final
+from typing import Final, TypeGuard
 
-import discord.client
-import discord.file
-import discord.flags
 import numpy
-from discord.ext import commands
+from discord import TextChannel
+from discord.abc import GuildChannel
+from discord.client import Client
+from discord.ext.commands import Bot, Context
+from discord.file import File
+from discord.flags import Intents
 from dotenv import load_dotenv
 from PIL import Image
 from wordcloud import STOPWORDS, ImageColorGenerator, WordCloud
@@ -154,26 +156,30 @@ ALL_STOPWORDS: Final = (
 # --- Helpers ------------------------------------------------------------------------ #
 
 
-def get_text_channels(client: discord.client.Client) -> set[discord.TextChannel]:
-    channels = set[discord.TextChannel]()
+def is_text_channel(channel: GuildChannel) -> TypeGuard[TextChannel]:
+    return isinstance(channel, TextChannel)
+
+
+def get_text_channels(client: Client) -> set[TextChannel]:
+    channels = set[TextChannel]()
     for channel in client.get_all_channels():
-        if isinstance(channel, discord.TextChannel):
+        if is_text_channel(channel):
             channels.add(channel)
     return channels
 
 
 # --- Set-up Client ------------------------------------------------------------------ #
 
-intents = discord.flags.Intents.default()
+intents = Intents.default()
 intents.message_content = True
 
-bot = commands.Bot("/", intents=intents)
+bot = Bot("/", intents=intents)
 
 # --- Handlers ----------------------------------------------------------------------- #
 
 
 @bot.command()
-async def wordcloud(ctx: commands.Context) -> None:
+async def wordcloud(ctx: Context) -> None:
     LOGGER.info("Collecting messages...")
 
     twenty_four_hours_ago: Final = datetime.today() - timedelta(days=1)
@@ -204,7 +210,7 @@ async def wordcloud(ctx: commands.Context) -> None:
         if channel.name == "tech":
             await channel.send(
                 f"Here's the Dougcord Tea Cloud since {twenty_four_hours_ago}.",
-                file=discord.file.File(output_file),
+                file=File(output_file),
             )
 
 
