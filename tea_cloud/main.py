@@ -139,6 +139,13 @@ CUSTOM_DOUGCORD_COMMON_WORDS: Final = {
     "will",
     "actually",
     "https",
+    "oh",
+    "much",
+    "going",
+    "yeah",
+    "ok",
+    "wait",
+    "really",
 }
 ALL_STOPWORDS: Final = (
     STOPWORDS | ALPHABET_STOPWORDS | TOP_100_COMMON_WORDS | CUSTOM_DOUGCORD_COMMON_WORDS
