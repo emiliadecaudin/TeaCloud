@@ -26,6 +26,7 @@ load_dotenv()
 # Main flow.
 LOGGER: Final = getLogger("discord")
 BOT_TOKEN: Final = getenv("BOT_TOKEN", "")
+BOT_USER_ID: Final = int(getenv("BOT_USER_ID", 0))
 URL_PATTERN: Final = re.compile(r"https?://\S+|www\.\S+")
 SERVER_WIDE_CHANNEL: Final = getenv("SERVER_WIDE_CHANNEL", "general")
 
@@ -138,10 +139,8 @@ TOP_100_COMMON_WORDS: Final = {
     "us",
 }
 CUSTOM_EXCLUSIONS: Final = {
-    "Tea Cloud",
     "TeaCloud",
     "wordcloud",
-    "word cloud",
     "one",
     "people",
     "think",
@@ -173,6 +172,40 @@ def get_all_text_channels(client: Client) -> set[TextChannel]:
     return channels
 
 
+async def collect_messages(
+    server_wide: bool, channel: TextChannel, after: datetime
+) -> str:
+    return URL_PATTERN.sub(
+        "",
+        " ".join(
+            [
+                message.content
+                for channel in (
+                    get_all_text_channels(bot) if server_wide else [channel]
+                )
+                async for message in channel.history(after=after)
+                if message.author.id != BOT_USER_ID
+            ]
+        ),
+    )
+
+
+def generate_word_cloud(text: str, server_id: int) -> Path:
+    mask_file = (CUSTOM_MASKS_DIR / f"{server_id}.png").resolve()
+    mask = numpy.array(Image.open(mask_file.as_posix())) if mask_file.exists() else None
+    output_file = (
+        OUTPUT_DIR / f"{server_id}_{datetime.timestamp(datetime.today())}.png"
+    ).resolve()
+    WordCloud(
+        background_color="white",
+        mask=mask,
+        color_func=ImageColorGenerator(mask) if mask_file.exists() else None,
+        stopwords=ALL_STOPWORDS,
+    ).generate(text).to_file(output_file.as_posix())
+
+    return output_file
+
+
 # --- Initialize Bot ----------------------------------------------------------------- #
 
 intents = Intents.default()
@@ -201,47 +234,27 @@ async def teacloud(interaction: Interaction) -> None:
     channel = interaction.channel
     server = interaction.guild
     if not isinstance(channel, TextChannel) or server is None:
+        LOGGER.warning("Ran in improper context; aborting...")
         return
 
     server_wide = channel.name == SERVER_WIDE_CHANNEL
     log_prefix = f"[{server.name}.{"*" if server_wide else channel.name}]"
-
-    LOGGER.info(f"{log_prefix} Collecting messages...")
     twenty_four_hours_ago: Final = datetime.today() - timedelta(days=1)
-    text = URL_PATTERN.sub(
-        "",
-        " ".join(
-            [
-                message.content
-                for channel in (
-                    get_all_text_channels(bot) if server_wide else [channel]
-                )
-                async for message in channel.history(after=twenty_four_hours_ago)
-            ]
-        ),
-    )
-
-    message_description = f"word cloud for {"the whole server" if server_wide else "this channel"} since {twenty_four_hours_ago}"
 
     LOGGER.info(f"{log_prefix} Generating word cloud...")
-    await interaction.response.send_message(
-        f"Generating {message_description}.",
-        ephemeral=True,
-    )
-    mask_file = (CUSTOM_MASKS_DIR / f"{server.id}.png").resolve()
-    mask = numpy.array(Image.open(mask_file.as_posix())) if mask_file.exists() else None
-    output_file = (OUTPUT_DIR / f"{server.id}_{twenty_four_hours_ago}.png").resolve()
-    WordCloud(
-        background_color="white",
-        mask=mask,
-        color_func=ImageColorGenerator(mask) if mask_file.exists() else None,
-        stopwords=ALL_STOPWORDS,
-    ).generate(text).to_file(output_file.as_posix())
+    await interaction.response.defer(thinking=True)
+
+    text = await collect_messages(server_wide, channel, after=twenty_four_hours_ago)
+    output_file = generate_word_cloud(text, server.id)
 
     LOGGER.info(f"{log_prefix} Word cloud generated...")
-    await interaction.response.send_message(
-        f"Here's the {server.name} {message_description}.",
-        file=File(output_file),
+    await interaction.followup.send(
+        (
+            f"Here's the {server.name} word cloud for "
+            f"{"the whole server" if server_wide else "this channel"} "
+            f"since {twenty_four_hours_ago}."
+        ),
+        file=File(output_file.as_posix()),
     )
 
 
