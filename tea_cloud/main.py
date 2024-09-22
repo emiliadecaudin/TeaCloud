@@ -8,11 +8,12 @@ from pathlib import Path
 from typing import Final
 
 import numpy
-from discord import TextChannel
+from discord.channel import TextChannel
 from discord.client import Client
-from discord.ext.commands import Bot, Context
+from discord.ext.commands import Bot
 from discord.file import File
 from discord.flags import Intents
+from discord.interactions import Interaction
 from dotenv import load_dotenv
 from PIL import Image
 from wordcloud import STOPWORDS, ImageColorGenerator, WordCloud
@@ -26,6 +27,7 @@ load_dotenv()
 LOGGER: Final = getLogger("discord")
 BOT_TOKEN: Final = getenv("BOT_TOKEN", "")
 URL_PATTERN: Final = re.compile(r"https?://\S+|www\.\S+")
+SERVER_WIDE_CHANNEL: Final = getenv("SERVER_WIDE_CHANNEL", "general")
 
 # Directories
 CUSTOM_MASKS_DIR: Final = Path(getenv("CUSTOM_MASKS_DIR", "./custom_masks")).resolve()
@@ -136,7 +138,10 @@ TOP_100_COMMON_WORDS: Final = {
     "us",
 }
 CUSTOM_EXCLUSIONS: Final = {
+    "Tea Cloud",
+    "TeaCloud",
     "wordcloud",
+    "word cloud",
     "one",
     "people",
     "think",
@@ -168,7 +173,7 @@ def get_all_text_channels(client: Client) -> set[TextChannel]:
     return channels
 
 
-# --- Set-up Client ------------------------------------------------------------------ #
+# --- Initialize Bot ----------------------------------------------------------------- #
 
 intents = Intents.default()
 intents.message_content = True
@@ -178,15 +183,28 @@ bot = Bot("/", intents=intents)
 # --- Handlers ----------------------------------------------------------------------- #
 
 
-@bot.command()
-async def wordcloud(ctx: Context) -> None:
-    channel = ctx.channel
-    server = ctx.guild
+@bot.event
+async def on_ready() -> None:
+    LOGGER.info("Syncing commands...")
+    await bot.tree.sync()
+    LOGGER.info("Commands synced succesfully!")
+
+
+@bot.tree.command(
+    name="teacloud",
+    description=(
+        "Generates a word cloud of the last day of messages in this channel, or "
+        f"the server if in #{SERVER_WIDE_CHANNEL}."
+    ),
+)
+async def teacloud(interaction: Interaction) -> None:
+    channel = interaction.channel
+    server = interaction.guild
     if not isinstance(channel, TextChannel) or server is None:
         return
 
-    in_general = channel.name == "general"
-    log_prefix = f"[{server.name}.{"*" if in_general else channel.name}]"
+    server_wide = channel.name == SERVER_WIDE_CHANNEL
+    log_prefix = f"[{server.name}.{"*" if server_wide else channel.name}]"
 
     LOGGER.info(f"{log_prefix} Collecting messages...")
     twenty_four_hours_ago: Final = datetime.today() - timedelta(days=1)
@@ -195,13 +213,21 @@ async def wordcloud(ctx: Context) -> None:
         " ".join(
             [
                 message.content
-                for channel in (get_all_text_channels(bot) if in_general else [channel])
+                for channel in (
+                    get_all_text_channels(bot) if server_wide else [channel]
+                )
                 async for message in channel.history(after=twenty_four_hours_ago)
             ]
         ),
     )
 
+    message_description = f"word cloud for {"the whole server" if server_wide else "this channel"} since {twenty_four_hours_ago}"
+
     LOGGER.info(f"{log_prefix} Generating word cloud...")
+    await interaction.response.send_message(
+        f"Generating {message_description}.",
+        ephemeral=True,
+    )
     mask_file = (CUSTOM_MASKS_DIR / f"{server.id}.png").resolve()
     mask = numpy.array(Image.open(mask_file.as_posix())) if mask_file.exists() else None
     output_file = (OUTPUT_DIR / f"{server.id}_{twenty_four_hours_ago}.png").resolve()
@@ -211,10 +237,10 @@ async def wordcloud(ctx: Context) -> None:
         color_func=ImageColorGenerator(mask) if mask_file.exists() else None,
         stopwords=ALL_STOPWORDS,
     ).generate(text).to_file(output_file.as_posix())
-    LOGGER.info(f"{log_prefix} Word cloud generated...")
 
-    await ctx.channel.send(
-        f"Here's the {server.name} Tea Cloud for {"the whole server" if in_general else "this channel"} since {twenty_four_hours_ago}.",
+    LOGGER.info(f"{log_prefix} Word cloud generated...")
+    await interaction.response.send_message(
+        f"Here's the {server.name} {message_description}.",
         file=File(output_file),
     )
 
