@@ -28,6 +28,7 @@ LOGGER: Final = getLogger("discord")
 BOT_TOKEN: Final = getenv("BOT_TOKEN", "")
 BOT_USER_ID: Final = int(getenv("BOT_USER_ID", 0))
 URL_PATTERN: Final = re.compile(r"https?://\S+|www\.\S+")
+SPOILER_PATTERN: Final = re.compile(r"\|\|(.*?)\|\|", flags=re.S)
 SERVER_WIDE_CHANNEL: Final = getenv("SERVER_WIDE_CHANNEL", "general")
 
 # Directories
@@ -171,19 +172,17 @@ def get_all_text_channels(server: Guild) -> set[TextChannel]:
 async def collect_messages(
     server_wide: bool, channel: TextChannel, server: Guild, after: datetime
 ) -> str:
-    return URL_PATTERN.sub(
-        "",
-        " ".join(
-            [
-                message.content
-                for channel in (
-                    get_all_text_channels(server) if server_wide else [channel]
-                )
-                async for message in channel.history(after=after)
-                if message.author.id != BOT_USER_ID
-            ]
-        ),
+    all_messages = " ".join(
+        [
+            message.content
+            for channel in (get_all_text_channels(server) if server_wide else [channel])
+            async for message in channel.history(after=after)
+            if message.author.id != BOT_USER_ID
+        ]
     )
+    no_urls = URL_PATTERN.sub("", all_messages)
+    no_spoilers = SPOILER_PATTERN.sub("", no_urls)
+    return no_spoilers
 
 
 def generate_word_cloud(text: str, server_id: int) -> File:
