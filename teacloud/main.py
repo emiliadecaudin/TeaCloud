@@ -9,10 +9,10 @@ from typing import Final, LiteralString
 
 import numpy
 from discord.channel import TextChannel
-from discord.client import Client
 from discord.ext.commands import Bot
 from discord.file import File
 from discord.flags import Intents
+from discord.guild import Guild
 from discord.interactions import Interaction
 from dotenv import load_dotenv
 from PIL import Image
@@ -164,16 +164,12 @@ ALL_STOPWORDS: Final = (
 # --- Helpers ------------------------------------------------------------------------ #
 
 
-def get_all_text_channels(client: Client) -> set[TextChannel]:
-    channels = set[TextChannel]()
-    for channel in client.get_all_channels():
-        if isinstance(channel, TextChannel):
-            channels.add(channel)
-    return channels
+def get_all_text_channels(server: Guild) -> set[TextChannel]:
+    return {channel for channel in server.channels if isinstance(channel, TextChannel)}
 
 
 async def collect_messages(
-    server_wide: bool, channel: TextChannel, after: datetime
+    server_wide: bool, channel: TextChannel, server: Guild, after: datetime
 ) -> str:
     return URL_PATTERN.sub(
         "",
@@ -181,7 +177,7 @@ async def collect_messages(
             [
                 message.content
                 for channel in (
-                    get_all_text_channels(bot) if server_wide else [channel]
+                    get_all_text_channels(server) if server_wide else [channel]
                 )
                 async for message in channel.history(after=after)
                 if message.author.id != BOT_USER_ID
@@ -243,7 +239,9 @@ async def teacloud(interaction: Interaction) -> None:
     LOGGER.info(f"{log_prefix} Generating word cloud...")
     await interaction.response.defer(thinking=True)
     word_cloud_file = generate_word_cloud(
-        await collect_messages(server_wide, channel, after=twenty_four_hours_ago),
+        await collect_messages(
+            server_wide, channel, server, after=twenty_four_hours_ago
+        ),
         server.id,
     )
 
