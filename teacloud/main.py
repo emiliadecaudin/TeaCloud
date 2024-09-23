@@ -252,7 +252,7 @@ async def teacloud(interaction: Interaction) -> None:
         (
             f"Here's the {server.name} word cloud for "
             f"{"the whole server" if server_wide else "this channel"} "
-            f"since yesterday, {twenty_four_hours_ago.strftime("%-I:%-M %p")}."
+            f"since yesterday, {twenty_four_hours_ago.strftime("%-I:%S %p")}."
         ),
         file=word_cloud_file,
     )
