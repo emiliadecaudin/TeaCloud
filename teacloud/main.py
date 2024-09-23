@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from logging import getLogger
 from os import getenv
 from pathlib import Path
-from typing import Final
+from typing import Final, LiteralString
 
 import numpy
 from discord.channel import TextChannel
@@ -36,7 +36,7 @@ OUTPUT_DIR: Final = Path(getenv("OUTPUT_DIR", "./output")).resolve()
 
 # Stopwords.
 ALPHABET_STOPWORDS: Final = {chr(i) for i in range(ord("a"), ord("z") + 1)}
-TOP_100_COMMON_WORDS: Final = {
+TOP_100_COMMON_WORDS: Final[set[LiteralString]] = {
     "the",
     "be",
     "to",
@@ -138,7 +138,7 @@ TOP_100_COMMON_WORDS: Final = {
     "most",
     "us",
 }
-CUSTOM_EXCLUSIONS: Final = {
+CUSTOM_EXCLUSIONS: Final[set[LiteralString]] = {
     "TeaCloud",
     "wordcloud",
     "one",
