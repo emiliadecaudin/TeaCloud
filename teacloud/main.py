@@ -172,14 +172,15 @@ def get_all_text_channels(server: Guild) -> set[TextChannel]:
 async def collect_messages(
     server_wide: bool, channel: TextChannel, server: Guild, after: datetime
 ) -> str:
-    all_messages = " ".join(
-        [
-            message.content
-            for channel in (get_all_text_channels(server) if server_wide else [channel])
-            async for message in channel.history(after=after)
-            if message.author.id != BOT_USER_ID
-        ]
-    )
+    collected_messages = []
+    channels = get_all_text_channels(server) if server_wide else [channel]
+    for channel in channels:
+        async for message in channel.history(after=after):
+            if message.author.id != BOT_USER_ID:
+                total_reactions = sum(reaction.count for reaction in message.reactions)
+                repeats = 1 + total_reactions  # Original message plus one per reaction
+                collected_messages.extend([message.content] * repeats)
+    all_messages = " ".join(collected_messages)
     no_urls = URL_PATTERN.sub("", all_messages)
     no_spoilers = SPOILER_PATTERN.sub("", no_urls)
     return no_spoilers
@@ -205,6 +206,7 @@ def generate_word_cloud(text: str, server_id: int) -> File:
 
 intents = Intents.default()
 intents.message_content = True
+intents.reactions = True
 
 bot = Bot("/", intents=intents)
 
