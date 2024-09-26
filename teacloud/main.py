@@ -1,6 +1,7 @@
 # --- Imports ------------------------------------------------------------------------ #
 
 import re
+from collections import Counter
 from datetime import datetime, timedelta
 from logging import getLogger
 from os import getenv
@@ -9,11 +10,13 @@ from typing import Final, LiteralString
 
 import numpy
 from discord.channel import TextChannel
+from discord.emoji import Emoji
 from discord.ext.commands import Bot
 from discord.file import File
 from discord.flags import Intents
 from discord.guild import Guild
 from discord.interactions import Interaction
+from discord.partial_emoji import PartialEmoji
 from dotenv import load_dotenv
 from PIL import Image
 from wordcloud import STOPWORDS, ImageColorGenerator, WordCloud
@@ -202,6 +205,21 @@ def generate_word_cloud(text: str, server_id: int) -> File:
     return File(output_file.as_posix())
 
 
+async def collect_emoji_frequencies(
+    server_wide: bool, channel: TextChannel, server: Guild, after: datetime
+) -> Counter[Emoji | str]:
+    return Counter(
+        [
+            emoji
+            for channel in (get_all_text_channels(server) if server_wide else [channel])
+            async for message in channel.history(after=after)
+            for reaction in message.reactions
+            for emoji in [reaction.emoji] * reaction.count
+            if not isinstance(emoji, PartialEmoji)
+        ]
+    )
+
+
 # --- Initialize Bot ----------------------------------------------------------------- #
 
 intents = Intents.default()
@@ -251,9 +269,44 @@ async def teacloud(interaction: Interaction) -> None:
         (
             f"Here's the {server.name} word cloud for "
             f"{"the whole server" if server_wide else "this channel"} "
-            f"since yesterday, {twenty_four_hours_ago.strftime("%-I:%S %p")}."
+            f"since yesterday, {twenty_four_hours_ago.strftime("%-I:%M %p")}."
         ),
         file=word_cloud_file,
+    )
+
+
+@bot.tree.command(
+    description=(
+        "Generates a list of the top ten emojis used on the server in the past day"
+    )
+)
+async def emojitea(interaction: Interaction) -> None:
+    channel = interaction.channel
+    server = interaction.guild
+    if not isinstance(channel, TextChannel) or server is None:
+        LOGGER.warning("Ran in improper context; aborting...")
+        return
+
+    server_wide = channel.name == SERVER_WIDE_CHANNEL
+    twenty_four_hours_ago: Final = datetime.today() - timedelta(days=1)
+
+    await interaction.response.defer(thinking=True)
+
+    emoji_frequencies = await collect_emoji_frequencies(
+        server_wide, channel, server, after=twenty_four_hours_ago
+    )
+
+    message = (
+        "Here are the top ten emojis used in "
+        f"{"the whole server" if server_wide else "this channel"} "
+        f"since yesterday, {twenty_four_hours_ago.strftime("%-I:%M %p")}.\n"
+    )
+
+    await interaction.followup.send(
+        message
+        + "\n".join(
+            [f"{emoji}: {count}" for emoji, count in emoji_frequencies.most_common(10)]
+        )
     )
 
 
