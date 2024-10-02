@@ -195,11 +195,16 @@ def generate_word_cloud(text: str, server_id: int) -> File:
     output_file = (
         OUTPUT_DIR / f"{server_id}_{datetime.timestamp(datetime.today())}.png"
     ).resolve()
+
+    # Normalize curly apostrophes to straight ones
+    text = text.replace("’", "'")
+    # Custom regular expression to include apostrophes in words
     WordCloud(
         background_color="white",
         mask=mask,
         color_func=ImageColorGenerator(mask) if mask_file.exists() else None,
         stopwords=ALL_STOPWORDS,
+        regexp=r"\b[\w']+\b",
     ).generate(text).to_file(output_file.as_posix())
 
     return File(output_file.as_posix())
